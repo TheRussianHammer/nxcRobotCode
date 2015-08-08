@@ -1,0 +1,412 @@
+
+#define distance_threshold 20
+#define check_distance 10
+
+
+#define Light_Thresh 58
+#define Light_closeThresh 90
+
+#define Low_Light_Thresh 25
+#define Low_Light_closeThresh 11
+
+
+//start light section
+
+int lux  = 0; // light lux val
+
+bool checkLight(){
+   if(Sensor(IN_2) >  Light_Thresh){
+     return true;
+   }
+   return false;
+}
+
+
+sub TurnTenDeg(){
+
+  OnFwd(OUT_B,75);
+  OnRev(OUT_C,75);
+  Wait(50);
+}
+sub TurnNegTenDeg(){
+
+  OnFwd(OUT_C,75);
+  OnRev(OUT_B,75);
+  Wait(50);
+}
+
+sub print(){
+
+  lux = Sensor(IN_2);
+  TextOut(15,LCD_LINE1,NumToStr(lux));
+}
+
+bool searchLight(){
+   TurnTenDeg();
+   //print();
+   if( checkLight())
+   {
+    return true;
+   }
+
+}
+//end light section
+
+//start collision section
+
+int CheckDistance(){ // checks distance on left side and returns distance
+  // y = .845x + 4.564
+  float distance = SensorUS(IN_3);
+  float slope = 0.845;
+  float b = 4.564;
+  distance = slope * distance + b;
+  return distance;
+}
+
+
+sub TurnRight(){
+  Off(OUT_BC);
+  OnRev(OUT_C,75);
+  OnFwd(OUT_B,75);
+  Wait(500);
+}
+
+sub TurnLeft(){
+  Off(OUT_AB);
+  OnRev(OUT_B,75);
+  OnFwd(OUT_C,75);
+  Wait(500);
+}
+//end collision section
+
+//start color section
+
+void Claw_Action(bool ObjInClaw)  //opens or closes claw
+{
+     if(ObjInClaw)
+       {
+        OnFwd(OUT_A,75);
+        Wait(500);
+        Off(OUT_A);
+       }
+     else
+       {
+         OnRev(OUT_A,75);
+         OnFwd(OUT_BC,75);
+         Wait(800);
+        Off(OUT_A);
+        Off(OUT_BC);
+        
+       }
+}
+
+/*void CheckColor(){   //returns pointer to array with normalized color data
+     unsigned int rawData[], normData[];
+     int scaledData[];
+     int cval;  //color val
+     int result = ReadSensorColorEx(S1, cval, rawData, normData, scaledData);
+     TextOut(15,LCD_LINE1,NumToStr(normData[0]));
+     TextOut(15,LCD_LINE1,NumToStr(normData[1]));
+     TextOut(15,LCD_LINE1,NumToStr(normData[2]));
+     Wait(300);
+     ClearScreen();
+}   */
+
+
+bool IsTrash(int cval[])
+{     if( cval[2] > 4 && cval[2] > cval[1] ){
+         return true;
+      }
+      return false;
+}
+
+bool IsRWaste(int cval[])
+{
+     if(cval[0] > 7 && cval[1] > 4 && cval[1] > cval[2]){
+         return true;
+      }
+      return false;
+}
+
+//end color section
+
+task main(){
+ int LeftDistance = 0;// path distance on left
+ int RightDistance = 0; // parth distance on right
+ 
+ unsigned int rawData[];
+ int scaledData[];
+ int color1;  // color infront of robot
+ int color2;  // color left of robot
+ int color3;  // color right of robot
+
+
+ //int cvalPtr*; //pointer responsible for holding color vals
+ 
+ int cval1[5];// color value infront of robot
+ int cval2[5];// color value left of robot
+ int cval3[5];// color value right of robot
+ int chosen_cval[5];// color chosen to chase
+ 
+ SetSensorLowspeed(IN_3);// sets ultrasonic sensor
+// SetSensorColorFull(S1);
+ 
+ ColorSensorReadType csr; // structure responsible for reading color
+ csr.Port = S1; // sets color sensor port
+ 
+ int colorThresh = 0;
+ int NextVal = 0;
+ 
+ bool TrackingCol = false; //true if tracking a color block
+ bool Obj_In_Claw = false; // determines whether object is in claw
+ bool trash = false; // true if obj is trash
+ bool nuclear = false; // true if obj is nuclear waste
+ bool LightSensorOn = false;
+ 
+ while(true){
+    // TextOut(10,LCD_LINE2,NumToStr(SensorUS(IN_1)));
+    //code body for object avoidance/detection starts
+
+     if(CheckDistance() <= distance_threshold && TrackingCol == false){
+       if(Obj_In_Claw == false){
+       
+         /* OnFwd(OUT_BC,75);
+          Wait(500);*/
+          Off(OUT_BC);
+          SetSensorColorFull(S4);   //sets color sensor
+          while(CheckDistance() > check_distance){
+             OnFwd(OUT_BC,25);
+             ReadSensorColorEx(S4, color1, rawData, cval1, scaledData)
+          }
+
+
+            ReadSensorColorEx(S4, color1, rawData, cval1, scaledData)
+
+        //  Wait(300);
+            if( cval1[2] > cval1[1] && cval1[2] > 6 && color1 != INPUT_WHITECOLOR)
+             {
+                TrackingCol = true;
+                trash = true;
+                colorThresh = cval1[2];
+                SetSensorType(S4, SENSOR_TYPE_COLORNONE);
+                // Wait(200);
+                }
+          
+           else if(cval1[1] > 6 && color1 != INPUT_WHITECOLOR){
+                TrackingCol = true;
+                nuclear = true;
+                SetSensorType(S4, SENSOR_TYPE_COLORNONE);
+           }
+           else{
+          
+                OnRev(OUT_BC,75);
+                Wait(300);
+             
+                TurnLeft();
+               LeftDistance = CheckDistance();
+               
+               
+               
+               TurnRight(); // reset position
+               TurnRight();
+
+
+
+
+          
+               RightDistance = CheckDistance();
+               SetSensorType(S4, SENSOR_TYPE_COLORNONE);
+               TurnLeft(); // reset position
+          
+
+            /*
+          if(cval1[2] > cval2[2] && cval1[2] > cval3[2] && cval1[1]<cval1[2])
+          {
+            TrackingCol = true;
+            trash = true;
+            colorThresh = cval1[2];
+           // Wait(200);
+          }
+
+          else if (cval2[2]>cval1[2]&&cval2[2]>cval3[2] && color1 = INPUT_BLUE)
+          {
+            TrackingCol = true;
+            trash = true;
+            TurnLeft();
+            colorThresh = cval2[2];
+           // Wait(200);
+          }
+          
+          else if(cval3[2] > cval1[1] && cval3[2] > cval2[2] && cval3[2] > 7)
+          {
+            TrackingCol = true;
+            trash = true;
+            TurnRight();
+            colorThresh = cval3[2];
+           // Wait(200);
+          }
+                 */
+          if(LeftDistance > RightDistance){
+
+             TurnLeft();
+          }
+          else{
+
+            TurnRight();
+          }
+          }
+         }
+    /*   else{        // object in claw
+          OnRev(OUT_BC,75);
+          Wait(300);
+          TurnLeft();
+          LeftDistance = CheckDistance();
+          TurnRight(); // reset position
+          
+          TurnRight();
+          RightDistance = CheckDistance();
+          TurnLeft(); // reset position
+          
+          if(LeftDistance > RightDistance){
+             TurnLeft();
+          }
+          else{
+            TurnRight();
+          }
+          OnFwd(OUT_BC,75);
+          Wait(300);
+       } */
+       
+     }
+     
+     //code body for object avoidance/detection ends
+
+     if (TrackingCol)
+     {
+       PlayTone(TONE_C4,MS_500);
+      /* ReadSensorColorEx(S1, cval, rawData, chosen_cval, scaledData)
+       if(chosen_cval[2] < colorThresh)
+        {
+           TrackingCol = false;
+        }   */
+        if(CheckDistance() <= check_distance  || cval1[0] > 20)
+         {
+           OnRev(OUT_BC,50);
+           Wait(200);
+           Obj_In_Claw = true;
+           TrackingCol = false;
+        //   OnRev(OUT_BC,75);
+        //   Wait(200);
+           Off(OUT_BC);
+           Claw_Action(true);
+
+         }
+     
+     }
+     
+     
+     
+     //code body for object in claw finding appropriate bin starts
+     
+     while(Obj_In_Claw)// start looking for trash bins
+      {
+        if(LightSensorOn == false){   // turn on sensor
+          SetSensorType(IN_2,IN_TYPE_LIGHT_INACTIVE);
+          SetSensorMode(IN_2,IN_MODE_PCTFULLSCALE);
+          ResetSensor(IN_2);
+          LightSensorOn = true;
+        }
+
+        if(searchLight()){   // looks for light
+          lux = Sensor(IN_2);
+          TurnTenDeg();
+          int lux2 = Sensor(IN_2);
+          if(trash){
+           if(lux2 > lux){
+            continue;
+            }
+            TurnNegTenDeg();
+          }
+          else{
+           if(lux2 < lux){
+            continue;
+           }
+           TurnNegTenDeg();
+          }
+          if(trash){
+            while(lux >= Light_Thresh
+            &&  lux < (Light_closeThresh ))
+            /*&& Sensor(IN_3) <= distance_threshold)*/  //checks thresh
+            {
+            PlayTone(TONE_C4,MS_500);
+              lux = Sensor(IN_2);
+              OnFwd(OUT_BC,75);
+            }
+          }
+          else{ // is nuclear waste
+            for(int i = 0; i < 18;i++) //  turns approximately 180 degrees
+              {
+                TurnTenDeg();
+              }
+            while(lux < Low_Light_Thresh && lux > Low_Light_closeThresh)
+            /*&& detects trash*/ /*&& Sensor(IN_3) <= distance_threshold)*/
+            {
+              lux = Sensor(IN_2);
+              OnFwd(OUT_BC,75);
+            }
+          
+          }
+        }
+        if(trash)
+        {
+            if(lux > (Light_closeThresh - 5)){ // if in trash dump
+              OnFwd(OUT_BC,75);
+              Wait(1000);
+              Claw_Action(false);  // opens claw
+              trash = false;
+              Obj_In_Claw = false;
+              OnRev(OUT_BC,75); // moves back small distance
+              Wait(100);
+              for(int i = 0; i < 18;i++) //  turns approximately 180 degrees
+              {
+                TurnTenDeg();
+              }
+              lux = 0;
+              
+            }
+        }
+        
+        else
+        {
+          if(lux <= Low_Light_closeThresh ){ // if in trash dump
+              OnFwd(OUT_BC,75);
+              Wait(1000);
+              Claw_Action(false);   // opens claw
+              Obj_In_Claw = false;
+              nuclear = false;
+              OnRev(OUT_BC,75); // moves back small distance
+              Wait(100);
+              for(int i = 0; i < 18;i++) //  turns approximately 180 degrees
+              {
+                TurnTenDeg();
+              }
+                 lux = 0;
+            }
+        }
+        
+        
+      }
+      // code body for object in claw ends
+      
+      
+        if(CheckDistance() >= distance_threshold) // moves if no obj detected
+        {
+         OnFwd(OUT_BC,75);  // move forward
+        }
+        
+
+
+
+   }
+
+ }
